@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Requirements Analysis Tool</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>Requirements Analysis Tool</h1>
+      <p class="subtitle">Analyze requirements against your codebase using AI</p>
+    </header>
+
+    <!-- Step 1: Process Codebase -->
+    <section class="card">
+      <div class="card__body">
+        <h2 class="section-title">Step 1: Process Codebase (Optional)</h2>
+        <p class="section-description">
+          Upload your codebase from a Git repository to create a searchable knowledge base. 
+          This enables the AI to analyze your code against requirements.
+        </p>
+        
+        <div class="form-group">
+          <label class="form-label" for="codebaseUrl">
+            Git Repository URL
+            <span class="label-hint">Required</span>
+          </label>
+          <input 
+            type="text" 
+            id="codebaseUrl" 
+            class="form-control"
+            placeholder="https://github.com/username/repo.git"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="branchInput">
+            Branch Name
+            <span class="label-hint">Optional, defaults to "main"</span>
+          </label>
+          <input 
+            type="text" 
+            id="branchInput" 
+            class="form-control"
+            placeholder="main"
+            value="main"
+          />
+        </div>
+
+        <button id="processCodebaseBtn" class="btn btn--primary">
+          <span class="btn-text">Process Codebase</span>
+        </button>
+
+        <div id="codebaseStatus" class="codebase-status status-default">
+          Codebase not processed yet
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Upload Requirements File -->
+    <section class="card">
+      <div class="card__body">
+        <h2 class="section-title">Step 2: Upload Requirements (Optional)</h2>
+        <p class="section-description">
+          Upload your requirements document (PDF, TXT, DOC, MD, or JSON) for detailed analysis.
+        </p>
+        
+        <div class="form-group">
+          <label class="form-label" for="requirementsFile">
+            Requirements Document
+          </label>
+          <input 
+            type="file" 
+            id="requirementsFile" 
+            class="form-control"
+            accept=".txt,.pdf,.doc,.docx,.md,.json"
+          />
+        </div>
+
+        <button id="uploadFileBtn" class="btn btn--secondary" disabled>
+          <span class="btn-text">Upload File</span>
+        </button>
+
+        <div id="fileStatus" class="file-status status-default">
+          No file selected
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3: Run Analysis -->
+    <section class="card">
+      <div class="card__body">
+        <h2 class="section-title">Step 3: Run Analysis</h2>
+        <p class="section-description">
+          Enter your analysis query. The AI will search your codebase and compare it with requirements.
+        </p>
+        
+        <div class="form-group">
+          <label class="form-label" for="analysisQuery">
+            Analysis Query
+            <span class="label-hint">What would you like to analyze?</span>
+          </label>
+          <textarea 
+            id="analysisQuery" 
+            class="form-control"
+            rows="6"
+            maxlength="2000"
+            placeholder="Example: Analyze the authentication module against the security requirements. Identify any gaps or missing features."
+          ></textarea>
+          <div class="char-count" id="charCount">0/2000</div>
+        </div>
+
+        <button id="analyzeBtn" class="btn btn--primary btn--full-width">
+          <span class="btn-text">Analyze Requirements</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Loading Section -->
+    <section id="loadingSection" class="card hidden">
+      <div class="card__body">
+        <div class="loading-spinner">
+          <div class="spinner"></div>
+          <p>Analyzing requirements... This may take a few moments.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results Section -->
+    <section id="resultsSection" class="card hidden">
+      <div class="card__body">
+        <h2 class="section-title">Analysis Results</h2>
+        
+        <div class="result-section">
+          <h3 class="result-title">Summary</h3>
+          <p id="summaryText" class="result-text"></p>
+        </div>
+
+        <div class="result-section">
+          <h3 class="result-title">Identified Gaps</h3>
+          <ul id="gapsList" class="result-list"></ul>
+        </div>
+
+        <div class="result-section">
+          <h3 class="result-title">Recommendations</h3>
+          <ul id="recommendationsList" class="result-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Error Section -->
+    <section id="errorSection" class="card hidden">
+      <div class="card__body">
+        <div class="error-container">
+          <h2 class="error-title">Analysis Failed</h2>
+          <p id="errorMessage" class="error-message"></p>
+          <button class="btn btn--secondary" onclick="location.reload()">
+            Try Again
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
