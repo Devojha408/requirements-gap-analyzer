@@ -12,8 +12,17 @@ const { LangflowClient } = require('@datastax/langflow-client');
 
 const app = express();
 
+// Increase timeout for long-running Langflow flows
+app.timeout = 600000; // 10 minutes
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Request timeout middleware
+app.use((req, res, next) => {
+  req.setTimeout(600000); // 10 minutes
+  res.setTimeout(600000); // 10 minutes
+  next();
+});
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -172,10 +181,11 @@ app.post('/api/analyze', async (req, res) => {
       console.log(`  Requirements file: ${file_path}`);
     }
 
-    // Initialize Langflow client
+    // Initialize Langflow client with increased timeout
     const client = new LangflowClient({ 
       baseUrl: LANGFLOW_BASE_URL, 
-      apiKey: apiKey
+      apiKey: apiKey,
+      timeout: 600000 // 10 minutes timeout for long-running flows
     });
 
     // Everything is handled by the main flow now
@@ -198,7 +208,11 @@ app.post('/api/analyze', async (req, res) => {
     }
 
     console.log('🚀 Running main analysis flow...');
+    console.log('⏱️  This may take several minutes (timeout set to 10 minutes)');
     const startTime = Date.now();
+    
+    // Increase client timeout for long-running flows
+    client.request.timeout = 600000; // 10 minutes
     
     const flow = client.flow(MAIN_ANALYSIS_FLOW_ID);
     const response = await flow.run(input_value, runOptions);

@@ -198,6 +198,12 @@ async function handleAnalyze() {
     showSection('loading');
     elements.analyzeBtn.disabled = true;
 
+    // Show progress message for long-running analysis
+    const loadingText = document.querySelector('.loading-text');
+    const loadingSubtext = document.querySelector('.loading-subtext');
+    if (loadingText) loadingText.textContent = 'Analyzing requirements...';
+    if (loadingSubtext) loadingSubtext.textContent = 'This may take 4-5 minutes. Please wait...';
+
     // Upload file to Langflow if provided
     let filePath = null;
     if (file) {
