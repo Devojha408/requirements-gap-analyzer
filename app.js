@@ -452,6 +452,8 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
       const decoder = new TextDecoder();
       let buffer = '';
       
+      let lastActivityTime = Date.now();
+      
       while (true) {
         const { done, value } = await reader.read();
         
@@ -467,13 +469,24 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
           try {
             const event = JSON.parse(line);
             
-            if (event.type === 'token') {
+            // Update last activity time
+            lastActivityTime = Date.now();
+            
+            if (event.type === 'start') {
+              console.log('✓ ' + event.message);
+            } else if (event.type === 'keepalive') {
+              // Keep-alive received, connection is still alive
+              console.log('💓 Keep-alive');
+            } else if (event.type === 'token') {
               // Update UI with each token
-              console.log('📝 Token:', event.data);
+              console.log('📝 Token received');
               updateStreamingOutput(event.data);
             } else if (event.type === 'end') {
               console.log('✓ Streaming complete:', event);
               return event;
+            } else if (event.type === 'error') {
+              console.error('✗ Stream error:', event.error);
+              throw new Error(event.error);
             }
           } catch (e) {
             console.warn('Failed to parse event:', line);
@@ -491,6 +504,12 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
 
   } catch (error) {
     console.error('❌ Analysis API error:', error);
+    
+    // Check if it's a timeout/abort error
+    if (error.message && (error.message.includes('terminated') || error.message.includes('aborted') || error.name === 'AbortError')) {
+      throw new Error('Connection timeout. The analysis is taking longer than expected. Please try again or contact support if the issue persists.');
+    }
+    
     throw error;
   }
 }
@@ -517,8 +536,12 @@ function startMonitoring(flowId) {
       const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.monitor}/${flowId}`);
       const data = await response.json();
       
+      // Log the structure for debugging
       if (data.success && data.builds && data.builds.vertex_builds) {
+        console.log('📊 Monitor data:', Object.keys(data.builds.vertex_builds));
         updateComponentStatus(data.builds.vertex_builds);
+      } else if (data.success && data.builds) {
+        console.log('⚠️ Monitor response has builds but no vertex_builds:', Object.keys(data.builds));
       }
     } catch (err) {
       console.warn('Monitor polling error:', err);
@@ -536,44 +559,62 @@ function stopMonitoring() {
 }
 
 // Update component status in UI
-function updateComponentStatus(builds) {
-  // Find components that are currently running
-  const runningComponents = builds
-    .filter(b => b.status === 'running' || b.status === 'pending')
-    .map(b => b.vertex_name);
-  
+function updateComponentStatus(vertexBuilds) {
   const streamingProgress = document.getElementById('streamingProgress');
   const currentComponentSpan = document.getElementById('currentComponent');
   
-  if (runningComponents.length > 0) {
-    const componentName = runningComponents[0];
-    
-    // Show streaming progress indicator
-    if (streamingProgress) {
-      streamingProgress.classList.remove('hidden');
-    }
-    
-    // Update with current component name (remove "Agent" suffix for readability)
-    if (currentComponentSpan) {
-      const cleanName = componentName.replace(' Agent', '');
-      currentComponentSpan.textContent = `🔄 Processing: ${cleanName}...`;
-    }
-    
-    console.log(`📊 Current component: ${componentName}`);
-  } else {
-    // All components completed
-    if (currentComponentSpan) {
-      currentComponentSpan.textContent = '✓ Analysis complete! Generating report...';
+  // vertex_builds is an object where keys are component names and values are arrays of build data
+  const componentNames = Object.keys(vertexBuilds);
+  
+  if (componentNames.length === 0) {
+    return;
+  }
+  
+  // Get the most recent component (last key or first in iteration order)
+  const latestComponent = componentNames[componentNames.length - 1];
+  const componentBuilds = vertexBuilds[latestComponent];
+  
+  if (!componentBuilds || componentBuilds.length === 0) {
+    return;
+  }
+  
+  // Get the first build (could also get the most recent)
+  const currentBuild = componentBuilds[0];
+  
+  // Check if component is running (based on outputs or logs)
+  const isRunning = currentBuild.outputs && currentBuild.outputs.response && currentBuild.outputs.response.message;
+  
+  // Check for completion status in logs
+  let isCompleted = false;
+  if (currentBuild.logs && currentBuild.logs.response) {
+    const logs = currentBuild.logs.response;
+    const lastLog = logs[logs.length - 1];
+    if (lastLog && lastLog.name === "Chain End") {
+      isCompleted = true;
     }
   }
   
-  // Log completed components
-  const completedComponents = builds
-    .filter(b => b.status === 'success')
-    .map(b => b.vertex_name);
+  if (streamingProgress) {
+    streamingProgress.classList.remove('hidden');
+  }
   
-  if (completedComponents.length > 0) {
-    console.log(`✓ Completed: ${completedComponents.join(', ')}`);
+  // Update component name display (remove "Agent-" prefix if present)
+  if (currentComponentSpan) {
+    const cleanName = latestComponent.replace(/^Agent[- ]?/, '').replace(/[-_]/g, ' ');
+    currentComponentSpan.textContent = isCompleted 
+      ? '✓ Analysis complete! Generating report...' 
+      : `🔄 Processing: ${cleanName}...`;
+  }
+  
+  console.log(`📊 Current component: ${latestComponent}${isCompleted ? ' (completed)' : ' (running)'}`);
+  
+  // Log component details
+  if (currentBuild.data && currentBuild.data.results) {
+    console.log(`📊 Component data:`, {
+      hasArtifacts: !!currentBuild.data.artifacts,
+      hasOutputs: !!currentBuild.outputs,
+      logCount: currentBuild.logs?.response?.length || 0
+    });
   }
 }
 

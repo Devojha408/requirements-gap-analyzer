@@ -232,30 +232,64 @@ app.post('/api/analyze', async (req, res) => {
       res.set('Content-Type', 'application/x-ndjson');
       res.set('Transfer-Encoding', 'chunked');
       
-      const response = await flow.stream(input_value, runOptions);
-      let fullResponse = '';
+      // Disable timeout for this streaming response
+      res.setTimeout(0);
       
-      for await (const event of response) {
-        if (event.event === 'token') {
-          // Send each token as it arrives
+      // Send initial keep-alive
+      res.write(JSON.stringify({ 
+        type: 'start', 
+        message: 'Analysis started...'
+      }) + '\n');
+      
+      // Set up keep-alive timer for long-running requests
+      const keepAliveInterval = setInterval(() => {
+        try {
           res.write(JSON.stringify({ 
-            type: 'token', 
-            data: event.data.chunk 
+            type: 'keepalive', 
+            timestamp: Date.now()
           }) + '\n');
-          fullResponse += event.data.chunk;
-        } else if (event.event === 'end') {
-          // Final message with complete response
-          res.write(JSON.stringify({ 
-            type: 'end', 
-            session_id: analysisSessionId,
-            elapsed_ms: Date.now() - startTime
-          }) + '\n');
-          fullResponse = event.data; // Full response in end event
+        } catch (err) {
+          console.log('Keep-alive failed, client may have disconnected');
+          clearInterval(keepAliveInterval);
         }
-      }
+      }, 30000); // Every 30 seconds
       
-      res.end();
-      console.log(`✓ Streaming completed (${Date.now() - startTime}ms)`);
+      try {
+        const response = await flow.stream(input_value, runOptions);
+        let fullResponse = '';
+        
+        for await (const event of response) {
+          if (event.event === 'token') {
+            // Send each token as it arrives
+            res.write(JSON.stringify({ 
+              type: 'token', 
+              data: event.data.chunk 
+            }) + '\n');
+            fullResponse += event.data.chunk;
+          } else if (event.event === 'end') {
+            // Final message with complete response
+            res.write(JSON.stringify({ 
+              type: 'end', 
+              session_id: analysisSessionId,
+              elapsed_ms: Date.now() - startTime
+            }) + '\n');
+            fullResponse = event.data; // Full response in end event
+          }
+        }
+        
+        clearInterval(keepAliveInterval);
+        res.end();
+        console.log(`✓ Streaming completed (${Date.now() - startTime}ms)`);
+      } catch (streamError) {
+        clearInterval(keepAliveInterval);
+        console.error('✗ Streaming error:', streamError.message);
+        res.write(JSON.stringify({ 
+          type: 'error', 
+          error: streamError.message 
+        }) + '\n');
+        res.end();
+        throw streamError;
+      }
     } else {
       // Non-streaming mode (original implementation)
       console.log('⚡ Using standard run mode...');
