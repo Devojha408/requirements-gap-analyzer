@@ -197,11 +197,15 @@ app.post('/api/analyze', async (req, res) => {
       console.log(`  Requirements file: ${file_path}`);
     }
 
-    // Initialize Langflow client with increased timeout
+    // Initialize Langflow client with increased timeout and keep-alive
     const client = new LangflowClient({ 
       baseUrl: LANGFLOW_BASE_URL, 
       apiKey: apiKey,
-      timeout: 600000 // 10 minutes timeout for long-running flows
+      timeout: 0, // Disable timeout completely for streaming
+      headers: {
+        'Connection': 'keep-alive',
+        'Keep-Alive': 'timeout=600, max=1000'
+      }
     });
 
     // Everything is handled by the main flow now
@@ -320,13 +324,17 @@ app.post('/api/analyze', async (req, res) => {
       } catch (streamError) {
         clearInterval(keepAliveInterval);
         console.error('✗ Streaming error:', streamError.message);
+        console.error('✗ Error type:', streamError.name);
+        console.error('✗ Error stack:', streamError.stack);
+        console.error('✗ Elapsed time:', Date.now() - startTime, 'ms');
         
         // Only write error if response hasn't ended
         if (!res.writableEnded) {
           try {
             res.write(JSON.stringify({ 
               type: 'error', 
-              error: streamError.message 
+              error: `Stream error after ${Math.round((Date.now() - startTime) / 1000)}s: ${streamError.message}`,
+              elapsed_seconds: Math.round((Date.now() - startTime) / 1000)
             }) + '\n');
           } catch (writeError) {
             console.error('Failed to write error to stream:', writeError.message);
