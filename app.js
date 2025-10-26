@@ -222,6 +222,12 @@ async function handleAnalyze() {
     setState({ isLoading: true, error: null });
     showSection('loading');
     elements.analyzeBtn.disabled = true;
+    
+    // Disable and hide download button during analysis
+    if (elements.downloadBtn) {
+      elements.downloadBtn.disabled = true;
+      elements.downloadBtn.classList.add('hidden');
+    }
 
     // Clear previous results for streaming
     if (elements.summaryText) {
@@ -288,7 +294,12 @@ async function handleAnalyze() {
       displayResults(result);
     }
     
+    // Only enable download button after successful completion
     elements.analyzeBtn.disabled = false;
+    if (elements.downloadBtn) {
+      elements.downloadBtn.disabled = false;
+      elements.downloadBtn.classList.remove('hidden');
+    }
 
   } catch (error) {
     console.error('❌ Analysis error:', error);
@@ -298,6 +309,12 @@ async function handleAnalyze() {
     const streamingProgress = document.getElementById('streamingProgress');
     if (streamingProgress) {
       streamingProgress.classList.add('hidden');
+    }
+    
+    // Keep download button disabled on error
+    if (elements.downloadBtn) {
+      elements.downloadBtn.disabled = true;
+      elements.downloadBtn.classList.add('hidden');
     }
     
     setState({ isLoading: false, error: error.message });
@@ -483,9 +500,23 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
               updateStreamingOutput(event.data);
             } else if (event.type === 'end') {
               console.log('✓ Streaming complete:', event);
+              
+              // Enable download button on successful completion
+              if (elements.downloadBtn) {
+                elements.downloadBtn.disabled = false;
+                elements.downloadBtn.classList.remove('hidden');
+              }
+              
               return event;
             } else if (event.type === 'error') {
               console.error('✗ Stream error:', event.error);
+              
+              // Keep download button disabled on error
+              if (elements.downloadBtn) {
+                elements.downloadBtn.disabled = true;
+                elements.downloadBtn.classList.add('hidden');
+              }
+              
               throw new Error(event.error);
             }
           } catch (e) {

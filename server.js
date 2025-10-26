@@ -171,17 +171,24 @@ app.post('/api/upload-file', upload.single('file'), async (req, res) => {
 // POST /api/analyze - Run main analysis flow
 app.post('/api/analyze', async (req, res) => {
   console.log('\n🔍 Running requirement analysis...');
+  let streamStarted = false;
   
   try {
     const apiKey = getApiKey(req);
     if (!apiKey) {
-      return res.status(401).json({ error: 'API key required' });
+      if (!res.headersSent) {
+        return res.status(401).json({ error: 'API key required' });
+      }
+      return;
     }
 
     const { input_value, file_path, session_id } = req.body;
     
     if (!input_value) {
-      return res.status(400).json({ error: 'input_value is required' });
+      if (!res.headersSent) {
+        return res.status(400).json({ error: 'input_value is required' });
+      }
+      return;
     }
 
     console.log(`  Query: ${input_value.substring(0, 150)}...`);
@@ -274,21 +281,41 @@ app.post('/api/analyze', async (req, res) => {
               elapsed_ms: Date.now() - startTime
             }) + '\n');
             fullResponse = event.data; // Full response in end event
+            break;
           }
         }
         
         clearInterval(keepAliveInterval);
-        res.end();
+        
+        // Only end if headers haven't been sent yet
+        if (!res.headersSent) {
+          res.end();
+        } else {
+          res.end();
+        }
+        
         console.log(`✓ Streaming completed (${Date.now() - startTime}ms)`);
       } catch (streamError) {
         clearInterval(keepAliveInterval);
         console.error('✗ Streaming error:', streamError.message);
-        res.write(JSON.stringify({ 
-          type: 'error', 
-          error: streamError.message 
-        }) + '\n');
-        res.end();
-        throw streamError;
+        
+        // Only write error if response hasn't ended
+        if (!res.writableEnded) {
+          try {
+            res.write(JSON.stringify({ 
+              type: 'error', 
+              error: streamError.message 
+            }) + '\n');
+          } catch (writeError) {
+            console.error('Failed to write error to stream:', writeError.message);
+          }
+        }
+        
+        try {
+          res.end();
+        } catch (endError) {
+          console.error('Failed to end response:', endError.message);
+        }
       }
     } else {
       // Non-streaming mode (original implementation)
@@ -309,10 +336,16 @@ app.post('/api/analyze', async (req, res) => {
   } catch (err) {
     console.error('✗ Analysis error:', err.message);
     console.error('  Stack:', err.stack);
-    return res.status(500).json({ 
-      error: 'Analysis failed', 
-      details: err.message || String(err) 
-    });
+    
+    // Don't try to send another response if headers were already sent (streaming mode)
+    if (!res.headersSent) {
+      return res.status(500).json({ 
+        error: 'Analysis failed', 
+        details: err.message || String(err) 
+      });
+    } else {
+      console.log('⚠️ Headers already sent, skipping error response');
+    }
   }
 });
 
