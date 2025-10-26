@@ -197,34 +197,30 @@ app.post('/api/analyze', async (req, res) => {
       console.log(`  Requirements file: ${file_path}`);
     }
 
-    // Initialize Langflow client with increased timeout and keep-alive
+    // Initialize Langflow client (following official docs)
+    // Docs: https://docs.langflow.org/integrations/langflow-typescript-client
     const client = new LangflowClient({ 
       baseUrl: LANGFLOW_BASE_URL, 
-      apiKey: apiKey,
-      timeout: 0, // Disable timeout completely for streaming
-      headers: {
-        'Connection': 'keep-alive',
-        'Keep-Alive': 'timeout=600, max=1000'
-      }
+      apiKey: apiKey
     });
 
-    // Everything is handled by the main flow now
-    // GitHub URL, branch, and Confluence URL are all in the input_value
+    // Session ID for conversation tracking
     const analysisSessionId = session_id || `analysis_${Date.now()}`;
 
+    // Prepare run options with session_id and tweaks
+    // Per docs: flow.stream(input, { session_id, tweaks })
     const runOptions = {
-      session_id: analysisSessionId
+      session_id: analysisSessionId,
+      tweaks: {}
     };
 
-    // Add file_path to tweaks if provided (for File component in flow)
+    // Add file path as tweak if provided (for File component in flow)
     if (file_path) {
       // File component ID from "The Requirement Inspector" flow
-      runOptions.tweaks = {
-        'File-hqkLd': {
-          path: [file_path]  // File component expects an array of file paths
-        }
+      runOptions.tweaks['File-hqkLd'] = {
+        path: [file_path]  // File component expects an array of file paths
       };
-      console.log(`  ✓ File path added to tweaks: ${file_path}`);
+      console.log(`  ✓ File path added to tweaks:`, runOptions.tweaks);
     }
 
     console.log('🚀 Running main analysis flow...');

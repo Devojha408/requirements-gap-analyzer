@@ -244,7 +244,13 @@ async function handleAnalyze() {
     const loadingText = document.querySelector('.loading-text');
     const loadingSubtext = document.querySelector('.loading-subtext');
     if (loadingText) loadingText.textContent = 'Analyzing requirements...';
-    if (loadingSubtext) loadingSubtext.textContent = 'Using streaming mode. Results will appear as they are generated...';
+    if (loadingSubtext) {
+      if (USE_STREAMING) {
+        loadingSubtext.textContent = 'Using streaming mode. Results will appear as they are generated...';
+      } else {
+        loadingSubtext.textContent = 'Please wait... This may take up to 10 minutes. Do not close this window.';
+      }
+    }
 
     // Upload file to Langflow if provided
     let filePath = null;
@@ -258,8 +264,10 @@ async function handleAnalyze() {
     const analysisQuery = buildAnalysisQuery(confluenceUrl, githubUrl, branchName, instructions);
     console.log('📝 Analysis query:', analysisQuery);
     
-    // Use streaming for better UX with long-running flows
-    const USE_STREAMING = true;
+    // Get streaming preference from toggle
+    const streamingToggle = document.getElementById('streamingToggle');
+    const USE_STREAMING = streamingToggle ? streamingToggle.checked : true;
+    console.log('📡 Streaming mode:', USE_STREAMING ? 'ENABLED' : 'DISABLED (will wait for complete response)');
     
     // Get flow ID from configuration (loaded from server environment)
     const FLOW_ID = APP_CONFIG.flow_id;
@@ -269,10 +277,16 @@ async function handleAnalyze() {
     }
     
     // Show results section immediately when streaming starts
+    // In non-streaming mode, keep showing loading screen
     if (USE_STREAMING) {
       showSection('results');
       elements.loadingSection.classList.add('hidden');
       // Start monitoring which component is running
+      startMonitoring(FLOW_ID);
+    } else {
+      // Keep loading screen visible
+      showSection('loading');
+      // Still monitor progress
       startMonitoring(FLOW_ID);
     }
     
@@ -290,7 +304,11 @@ async function handleAnalyze() {
     
     setState({ isLoading: false, results: result });
     
+    // Show results section after completion
+    showSection('results');
+    
     if (!USE_STREAMING) {
+      // Non-streaming: parse and display the complete result
       displayResults(result);
     } else {
       // In streaming mode, parse the accumulated text to populate gaps/recommendations
