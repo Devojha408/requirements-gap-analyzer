@@ -18,9 +18,31 @@ const API_CONFIG = {
   endpoints: {
     uploadFile: '/api/upload-file',
     analyze: '/api/analyze',
-    monitor: '/api/monitor/flow'
+    monitor: '/api/monitor/flow',
+    config: '/api/config'
   }
 };
+
+// Application Configuration (loaded from server)
+let APP_CONFIG = {
+  flow_id: null
+};
+
+// Load configuration from server
+async function loadConfig() {
+  try {
+    const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.config}`);
+    if (response.ok) {
+      const data = await response.json();
+      APP_CONFIG = data;
+      console.log('✓ Configuration loaded:', { flow_id: APP_CONFIG.flow_id });
+    } else {
+      console.warn('⚠️ Failed to load configuration from server');
+    }
+  } catch (error) {
+    console.warn('⚠️ Error loading configuration:', error.message);
+  }
+}
 
 // DOM Elements
 const elements = {
@@ -54,7 +76,8 @@ const elements = {
 };
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadConfig();
   setupEventListeners();
   updateCharCount();
 });
@@ -232,8 +255,12 @@ async function handleAnalyze() {
     // Use streaming for better UX with long-running flows
     const USE_STREAMING = true;
     
-    // Get flow ID for monitoring (from environment or config)
-    const FLOW_ID = 'd5e49d37-42d9-453a-b428-a6bafc90f608'; // Your MAIN_ANALYSIS_FLOW_ID
+    // Get flow ID from configuration (loaded from server environment)
+    const FLOW_ID = APP_CONFIG.flow_id;
+    
+    if (!FLOW_ID) {
+      throw new Error('Flow ID not configured. Please set MAIN_ANALYSIS_FLOW_ID in your environment.');
+    }
     
     // Show results section immediately when streaming starts
     if (USE_STREAMING) {

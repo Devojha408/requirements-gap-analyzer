@@ -74,8 +74,8 @@ app.use((req, res, next) => {
 });
 
 // Environment configuration
-const LANGFLOW_BASE_URL = process.env.LANGFLOW_BASE_URL || 'https://hackathon-agentic.finconsgroup.com';
-const MAIN_ANALYSIS_FLOW_ID = process.env.MAIN_ANALYSIS_FLOW_ID || 'd5e49d37-42d9-453a-b428-a6bafc90f608';
+const LANGFLOW_BASE_URL = process.env.LANGFLOW_BASE_URL;
+const MAIN_ANALYSIS_FLOW_ID = process.env.MAIN_ANALYSIS_FLOW_ID;
 const SERVER_API_KEY = process.env.API_KEY;
 
 if (!SERVER_API_KEY) {
@@ -89,6 +89,15 @@ if (!SERVER_API_KEY) {
 const staticDir = path.join(__dirname, '.');
 app.use(express.static(staticDir));
 app.get('/', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+
+// GET /api/config - Get configuration for frontend
+app.get('/api/config', (req, res) => {
+  return res.json({
+    success: true,
+    flow_id: MAIN_ANALYSIS_FLOW_ID,
+    langflow_base_url: LANGFLOW_BASE_URL
+  });
+});
 
 // Helper function
 function getApiKey(req) {
