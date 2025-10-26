@@ -219,6 +219,11 @@ async function handleAnalyze() {
   }
 
   try {
+    // Get streaming preference from toggle FIRST (before using it)
+    const streamingToggle = document.getElementById('streamingToggle');
+    const USE_STREAMING = streamingToggle ? streamingToggle.checked : true;
+    console.log('📡 Streaming mode:', USE_STREAMING ? 'ENABLED' : 'DISABLED (will wait for complete response)');
+    
     setState({ isLoading: true, error: null });
     showSection('loading');
     elements.analyzeBtn.disabled = true;
@@ -263,11 +268,6 @@ async function handleAnalyze() {
     // Build analysis query - everything in one message for the main flow
     const analysisQuery = buildAnalysisQuery(confluenceUrl, githubUrl, branchName, instructions);
     console.log('📝 Analysis query:', analysisQuery);
-    
-    // Get streaming preference from toggle
-    const streamingToggle = document.getElementById('streamingToggle');
-    const USE_STREAMING = streamingToggle ? streamingToggle.checked : true;
-    console.log('📡 Streaming mode:', USE_STREAMING ? 'ENABLED' : 'DISABLED (will wait for complete response)');
     
     // Get flow ID from configuration (loaded from server environment)
     const FLOW_ID = APP_CONFIG.flow_id;
