@@ -66,13 +66,8 @@ app.use((req, res, next) => {
 
 // Environment configuration
 const LANGFLOW_BASE_URL = process.env.LANGFLOW_BASE_URL || 'https://hackathon-agentic.finconsgroup.com';
-const CODE_CONNECTOR_FLOW_ID = process.env.CODE_CONNECTOR_FLOW_ID || 'd65bd25d-06b6-4359-9b22-b64705e735e5';
 const MAIN_ANALYSIS_FLOW_ID = process.env.MAIN_ANALYSIS_FLOW_ID || 'd5e49d37-42d9-453a-b428-a6bafc90f608';
 const SERVER_API_KEY = process.env.API_KEY;
-
-// Component IDs from Code-Connector flow
-const GIT_URL_INPUT_ID = process.env.GIT_URL_INPUT_ID || 'TextInput-FwNsA';
-const BRANCH_INPUT_ID = process.env.BRANCH_INPUT_ID || 'TextInput-uvq4b';
 
 if (!SERVER_API_KEY) {
   console.warn('⚠️  No API_KEY set in environment. API calls will fail.');
@@ -90,106 +85,6 @@ app.get('/', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
 function getApiKey(req) {
   return SERVER_API_KEY || req.headers['x-api-key'] || req.query.api_key || null;
 }
-
-// POST /api/process-codebase - Process Git repository and create RAG vectors
-app.post('/api/process-codebase', async (req, res) => {
-  console.log('\n📦 Processing codebase from Git repository...');
-  
-  try {
-    const apiKey = getApiKey(req);
-    
-    if (!apiKey) {
-      console.error('✗ No API key available');
-      return res.status(401).json({ 
-        error: 'API key required',
-        details: 'Please set API_KEY in .env file or pass x-api-key header'
-      });
-    }
-
-    const { git_url, branch } = req.body;
-    
-    if (!git_url) {
-      return res.status(400).json({ error: 'git_url is required' });
-    }
-
-    console.log(`  Git URL: ${git_url}`);
-    console.log(`  Branch: ${branch || 'main'}`);
-    console.log(`  Flow ID: ${CODE_CONNECTOR_FLOW_ID}`);
-    console.log(`  API Key: ${apiKey.substring(0, 10)}...`);
-
-    // Initialize Langflow client with explicit API key
-    const client = new LangflowClient({ 
-      baseUrl: LANGFLOW_BASE_URL, 
-      apiKey: apiKey  // Explicitly pass the API key
-    });
-
-    // Prepare tweaks to set the TextInput values
-    const tweaks = {
-      [GIT_URL_INPUT_ID]: {
-        input_value: git_url
-      },
-      [BRANCH_INPUT_ID]: {
-        input_value: branch || 'main'
-      }
-    };
-
-    console.log(`  Tweaks:`, JSON.stringify(tweaks, null, 2));
-
-    const runOptions = {
-      session_id: `codebase_${Date.now()}`,
-      tweaks: tweaks
-    };
-
-    console.log('  Starting Code-Connector flow...');
-    console.log('  This will: Load Git → Split Text → Create Vectors in Astra DB');
-    const startTime = Date.now();
-
-    const flow = client.flow(CODE_CONNECTOR_FLOW_ID);
-    
-    try {
-      // Run the flow with error handling
-      const response = await flow.run('Process codebase', runOptions);
-
-      const elapsed = Date.now() - startTime;
-      console.log(`✓ Codebase processed and RAG vectors created in Astra DB (${elapsed}ms)`);
-
-      return res.json({
-        success: true,
-        message: 'Codebase fetched, chunked, and vectors created in Astra DB',
-        session_id: runOptions.session_id,
-        elapsed_ms: elapsed,
-        git_url: git_url,
-        branch: branch || 'main',
-        response: response
-      });
-
-    } catch (flowError) {
-      console.error('✗ Flow execution error:', flowError.message);
-      console.error('  Full error:', flowError);
-      
-      // Check if it's a 403 error
-      if (flowError.message && flowError.message.includes('403')) {
-        return res.status(403).json({
-          error: 'Authentication failed',
-          details: 'The API key was rejected by Langflow. Please verify your API_KEY in .env is correct.',
-          langflow_error: flowError.message
-        });
-      }
-      
-      throw flowError;
-    }
-
-  } catch (err) {
-    console.error('✗ Codebase processing error:', err.message);
-    console.error('  Stack:', err.stack);
-    
-    return res.status(500).json({ 
-      error: 'Codebase processing failed', 
-      details: err.message || String(err),
-      type: err.name || 'Unknown error'
-    });
-  }
-});
 
 // POST /api/upload-file - Upload requirements file to Langflow
 app.post('/api/upload-file', upload.single('file'), async (req, res) => {
@@ -271,35 +166,40 @@ app.post('/api/analyze', async (req, res) => {
       return res.status(400).json({ error: 'input_value is required' });
     }
 
-    console.log(`  Query: ${input_value.substring(0, 100)}...`);
+    console.log(`  Query: ${input_value.substring(0, 150)}...`);
+    
     if (file_path) {
       console.log(`  Requirements file: ${file_path}`);
     }
 
-    // Initialize Langflow client with explicit API key
+    // Initialize Langflow client
     const client = new LangflowClient({ 
       baseUrl: LANGFLOW_BASE_URL, 
-      apiKey: apiKey  // Explicitly pass the API key
+      apiKey: apiKey
     });
 
+    // Everything is handled by the main flow now
+    // GitHub URL, branch, and Confluence URL are all in the input_value
+    const analysisSessionId = session_id || `analysis_${Date.now()}`;
+
     const runOptions = {
-      session_id: session_id || `analysis_${Date.now()}`
+      session_id: analysisSessionId
     };
 
-    // Add file_path to tweaks if provided
+    // Add file_path to tweaks if provided (for File component in flow)
     if (file_path) {
+      // File component ID from "The Requirement Inspector" flow
       runOptions.tweaks = {
-        // Update with your actual File component ID from main flow
-        'File-COMPONENT-ID': {
-          path: file_path
+        'File-hqkLd': {
+          path: [file_path]  // File component expects an array of file paths
         }
       };
+      console.log(`  ✓ File path added to tweaks: ${file_path}`);
     }
 
-    console.log('  Starting analysis flow...');
-    console.log('  This will query Astra DB for relevant code chunks');
+    console.log('🚀 Running main analysis flow...');
     const startTime = Date.now();
-
+    
     const flow = client.flow(MAIN_ANALYSIS_FLOW_ID);
     const response = await flow.run(input_value, runOptions);
 
@@ -308,13 +208,14 @@ app.post('/api/analyze', async (req, res) => {
 
     return res.json({
       success: true,
-      session_id: runOptions.session_id,
+      session_id: analysisSessionId,
       elapsed_ms: elapsed,
       response: response
     });
 
   } catch (err) {
     console.error('✗ Analysis error:', err.message);
+    console.error('  Stack:', err.stack);
     return res.status(500).json({ 
       error: 'Analysis failed', 
       details: err.message || String(err) 
@@ -327,12 +228,16 @@ app.listen(PORT, () => {
   console.log(`\n🚀 Server running at http://localhost:${PORT}`);
   console.log(`\n📋 Configuration:`);
   console.log(`   Langflow URL: ${LANGFLOW_BASE_URL}`);
-  console.log(`   Code Connector Flow: ${CODE_CONNECTOR_FLOW_ID}`);
   console.log(`   Main Analysis Flow: ${MAIN_ANALYSIS_FLOW_ID}`);
   console.log(`   API Key: ${SERVER_API_KEY ? '✓ Set' : '✗ Not set'}`);
   
   if (SERVER_API_KEY) {
     console.log(`   API Key Preview: ${SERVER_API_KEY.substring(0, 10)}...`);
   }
+  
+  console.log(`\n📝 Usage:`);
+  console.log(`   All analysis happens in the main flow`);
+  console.log(`   GitHub URL and Confluence link are passed in the chat input`);
+  console.log(`   Example: "Analyze requirements from [confluence-url] against [github-url] master branch"`);
   console.log('');
 });

@@ -3,161 +3,214 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Requirements Analysis Tool</title>
+  <title>Requirements Gap Analyzer</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container">
     <!-- Header -->
     <header class="header">
-      <h1>Requirements Analysis Tool</h1>
-      <p class="subtitle">Analyze requirements against your codebase using AI</p>
+      <h1>🔍 Requirements Gap Analyzer</h1>
+      <p class="subtitle">Analyze Confluence requirements against your GitHub codebase using AI</p>
     </header>
 
-    <!-- Step 1: Process Codebase -->
-    <section class="card">
+    <!-- Main Analysis Form -->
+    <section class="card analysis-card">
       <div class="card__body">
-        <h2 class="section-title">Step 1: Process Codebase (Optional)</h2>
+        <h2 class="section-title">Configure Analysis</h2>
         <p class="section-description">
-          Upload your codebase from a Git repository to create a searchable knowledge base. 
-          This enables the AI to analyze your code against requirements.
+          Enter your requirements source (Confluence or upload a file) and the GitHub repository to analyze.
         </p>
-        
-        <div class="form-group">
-          <label class="form-label" for="codebaseUrl">
-            Git Repository URL
-            <span class="label-hint">Required</span>
-          </label>
-          <input 
-            type="text" 
-            id="codebaseUrl" 
-            class="form-control"
-            placeholder="https://github.com/username/repo.git"
-          />
+
+        <!-- Requirements Source -->
+        <div class="input-section">
+          <h3 class="input-section-title">📋 Requirements Source</h3>
+          
+          <div class="form-group">
+            <label class="form-label" for="confluenceUrl">
+              Confluence Page URL or Page ID
+              <span class="label-hint">Primary source for requirements</span>
+            </label>
+            <input 
+              type="text" 
+              id="confluenceUrl" 
+              class="form-control"
+              placeholder="https://yourcompany.atlassian.net/wiki/spaces/SPACE/pages/123456/Page-Title"
+            />
+            <div class="field-help">
+              Enter the full Confluence URL or just the page ID (e.g., 393217)
+            </div>
+          </div>
+
+          <div class="divider">
+            <span>OR</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="requirementsFile">
+              Upload Requirements Document
+              <span class="label-hint">Alternative to Confluence link</span>
+            </label>
+            <div class="file-upload-wrapper">
+              <input 
+                type="file" 
+                id="requirementsFile" 
+                class="file-input"
+                accept=".txt,.pdf,.doc,.docx,.md,.json"
+              />
+              <label for="requirementsFile" class="file-upload-label">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span id="fileLabel">Choose a file or drag & drop</span>
+              </label>
+            </div>
+            <div id="fileStatus" class="file-status status-default hidden">
+              No file selected
+            </div>
+          </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="branchInput">
-            Branch Name
-            <span class="label-hint">Optional, defaults to "main"</span>
-          </label>
-          <input 
-            type="text" 
-            id="branchInput" 
-            class="form-control"
-            placeholder="main"
-            value="main"
-          />
+        <!-- Codebase Source -->
+        <div class="input-section">
+          <h3 class="input-section-title">💻 Codebase Source</h3>
+          
+          <div class="form-group">
+            <label class="form-label" for="githubUrl">
+              GitHub Repository URL
+              <span class="label-hint">Required</span>
+            </label>
+            <input 
+              type="text" 
+              id="githubUrl" 
+              class="form-control"
+              placeholder="https://github.com/username/repository.git"
+            />
+            <div class="field-help">
+              Enter the full GitHub repository URL (with or without .git extension)
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="branchName">
+              Branch Name
+              <span class="label-hint">Optional</span>
+            </label>
+            <input 
+              type="text" 
+              id="branchName" 
+              class="form-control"
+              placeholder="main"
+              value="main"
+            />
+          </div>
         </div>
 
-        <button id="processCodebaseBtn" class="btn btn--primary">
-          <span class="btn-text">Process Codebase</span>
-        </button>
-
-        <div id="codebaseStatus" class="codebase-status status-default">
-          Codebase not processed yet
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 2: Upload Requirements File -->
-    <section class="card">
-      <div class="card__body">
-        <h2 class="section-title">Step 2: Upload Requirements (Optional)</h2>
-        <p class="section-description">
-          Upload your requirements document (PDF, TXT, DOC, MD, or JSON) for detailed analysis.
-        </p>
-        
-        <div class="form-group">
-          <label class="form-label" for="requirementsFile">
-            Requirements Document
-          </label>
-          <input 
-            type="file" 
-            id="requirementsFile" 
-            class="form-control"
-            accept=".txt,.pdf,.doc,.docx,.md,.json"
-          />
+        <!-- Analysis Instructions -->
+        <div class="input-section">
+          <h3 class="input-section-title">📝 Analysis Instructions (Optional)</h3>
+          
+          <div class="form-group">
+            <label class="form-label" for="analysisInstructions">
+              Additional Instructions
+              <span class="label-hint">Customize the analysis focus</span>
+            </label>
+            <textarea 
+              id="analysisInstructions" 
+              class="form-control"
+              rows="4"
+              maxlength="1000"
+              placeholder="Example: Focus on authentication and authorization features. Check for security compliance with OWASP standards."
+            ></textarea>
+            <div class="char-count" id="charCount">0/1000</div>
+          </div>
         </div>
 
-        <button id="uploadFileBtn" class="btn btn--secondary" disabled>
-          <span class="btn-text">Upload File</span>
-        </button>
-
-        <div id="fileStatus" class="file-status status-default">
-          No file selected
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button id="analyzeBtn" class="btn btn--primary btn--large">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.35-4.35"/>
+            </svg>
+            <span class="btn-text">Run Analysis</span>
+          </button>
+          <button id="resetBtn" class="btn btn--secondary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/>
+              <polyline points="23 20 23 14 17 14"/>
+              <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+            </svg>
+            Reset
+          </button>
         </div>
-      </div>
-    </section>
-
-    <!-- Step 3: Run Analysis -->
-    <section class="card">
-      <div class="card__body">
-        <h2 class="section-title">Step 3: Run Analysis</h2>
-        <p class="section-description">
-          Enter your analysis query. The AI will search your codebase and compare it with requirements.
-        </p>
-        
-        <div class="form-group">
-          <label class="form-label" for="analysisQuery">
-            Analysis Query
-            <span class="label-hint">What would you like to analyze?</span>
-          </label>
-          <textarea 
-            id="analysisQuery" 
-            class="form-control"
-            rows="6"
-            maxlength="2000"
-            placeholder="Example: Analyze the authentication module against the security requirements. Identify any gaps or missing features."
-          ></textarea>
-          <div class="char-count" id="charCount">0/2000</div>
-        </div>
-
-        <button id="analyzeBtn" class="btn btn--primary btn--full-width">
-          <span class="btn-text">Analyze Requirements</span>
-        </button>
       </div>
     </section>
 
     <!-- Loading Section -->
     <section id="loadingSection" class="card hidden">
       <div class="card__body">
-        <div class="loading-spinner">
-          <div class="spinner"></div>
-          <p>Analyzing requirements... This may take a few moments.</p>
+        <div class="loading-container">
+          <div class="loading-spinner"></div>
+          <p class="loading-text">Analyzing requirements...</p>
+          <p class="loading-subtext">This may take a few moments while we process your codebase and compare it with requirements.</p>
         </div>
       </div>
     </section>
 
     <!-- Results Section -->
-    <section id="resultsSection" class="card hidden">
+    <section id="resultsSection" class="card results-card hidden">
       <div class="card__body">
-        <h2 class="section-title">Analysis Results</h2>
+        <div class="results-header">
+          <h2 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Analysis Results
+          </h2>
+          <button id="downloadBtn" class="btn btn--outline btn--sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download Report
+          </button>
+        </div>
         
-        <div class="result-section">
-          <h3 class="result-title">Summary</h3>
-          <p id="summaryText" class="result-text"></p>
-        </div>
+        <div class="results-content">
+          <div class="result-section">
+            <h3 class="result-title">📊 Summary</h3>
+            <div id="summaryText" class="result-text"></div>
+          </div>
 
-        <div class="result-section">
-          <h3 class="result-title">Identified Gaps</h3>
-          <ul id="gapsList" class="result-list"></ul>
-        </div>
+          <div class="result-section">
+            <h3 class="result-title">⚠️ Identified Gaps</h3>
+            <ul id="gapsList" class="result-list"></ul>
+          </div>
 
-        <div class="result-section">
-          <h3 class="result-title">Recommendations</h3>
-          <ul id="recommendationsList" class="result-list"></ul>
+          <div class="result-section">
+            <h3 class="result-title">💡 Recommendations</h3>
+            <ul id="recommendationsList" class="result-list"></ul>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- Error Section -->
-    <section id="errorSection" class="card hidden">
+    <section id="errorSection" class="card error-card hidden">
       <div class="card__body">
         <div class="error-container">
+          <svg class="error-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
           <h2 class="error-title">Analysis Failed</h2>
           <p id="errorMessage" class="error-message"></p>
-          <button class="btn btn--secondary" onclick="location.reload()">
+          <button class="btn btn--primary" onclick="location.reload()">
             Try Again
           </button>
         </div>
