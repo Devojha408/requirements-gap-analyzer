@@ -444,8 +444,8 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
     payload.file_path = filePath;
   }
 
-  console.log('🚀 Calling analysis API with payload:', payload);
-  console.log('📡 Streaming mode:', useStreaming ? 'enabled' : 'disabled');
+    console.log('🚀 Calling analysis API with payload:', payload);
+    console.log('📡 Streaming mode:', useStreaming ? 'enabled (will use ReadableStream)' : 'disabled (will wait for complete JSON)');
 
   try {
     const url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.analyze}${useStreaming ? '?stream=true' : ''}`;
@@ -464,7 +464,8 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
     }
 
     if (useStreaming && response.headers.get('Content-Type') === 'application/x-ndjson') {
-      // Handle streaming response
+      // Handle streaming response using ReadableStream API
+      console.log('📡 Using ReadableStream to read chunks in real-time');
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -494,12 +495,21 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
             } else if (event.type === 'keepalive') {
               // Keep-alive received, connection is still alive
               console.log('💓 Keep-alive');
+            } else if (event.type === 'add_message') {
+              // Message added to chat (from Langflow)
+              console.log('📨 Message received:', event.data);
             } else if (event.type === 'token') {
               // Update UI with each token
-              console.log('📝 Token received');
+              console.log('📝 Streaming token...');
               updateStreamingOutput(event.data);
             } else if (event.type === 'end') {
               console.log('✓ Streaming complete:', event);
+              
+              // Remove streaming cursor
+              const cursor = elements.summaryText?.querySelector('.streaming-cursor');
+              if (cursor) {
+                cursor.remove();
+              }
               
               // Enable download button on successful completion
               if (elements.downloadBtn) {
@@ -527,7 +537,8 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
       
       return { success: true };
     } else {
-      // Non-streaming response
+      // Non-streaming response - wait for complete JSON
+      console.log('📦 Waiting for complete JSON response...');
       const data = await response.json();
       console.log('✓ Analysis complete:', data);
       return data.response;
@@ -549,7 +560,21 @@ async function callAnalysisAPI(query, filePath, useStreaming = false) {
 function updateStreamingOutput(chunk) {
   // Update the summary text with streaming chunks
   if (elements.summaryText) {
+    // Remove cursor if it exists
+    const cursor = elements.summaryText.querySelector('.streaming-cursor');
+    if (cursor) {
+      cursor.remove();
+    }
+    
+    // Append the chunk
     elements.summaryText.textContent += chunk;
+    
+    // Add blinking cursor to show streaming is active
+    const cursorSpan = document.createElement('span');
+    cursorSpan.className = 'streaming-cursor';
+    cursorSpan.textContent = '▊';
+    elements.summaryText.appendChild(cursorSpan);
+    
     // Auto-scroll to bottom
     elements.summaryText.parentElement.scrollTop = elements.summaryText.parentElement.scrollHeight;
   }

@@ -234,6 +234,7 @@ app.post('/api/analyze', async (req, res) => {
     
     if (useStreaming) {
       // Use streaming for better UX with long-running flows
+      // Based on: https://www.langflow.org/blog/how-to-stream-responses-from-langflow-api-in-node-js
       console.log('📡 Using streaming mode...');
       
       res.set('Content-Type', 'application/x-ndjson');
@@ -265,7 +266,23 @@ app.post('/api/analyze', async (req, res) => {
         const response = await flow.stream(input_value, runOptions);
         let fullResponse = '';
         
+        // Langflow stream events (https://www.langflow.org/blog/how-to-stream-responses-from-langflow-api-in-node-js):
+        // - 'add_message': a message has been added to the chat (human input or AI response)
+        // - 'token': a token has been emitted as part of message generation
+        // - 'end': all tokens have been returned, contains full response
         for await (const event of response) {
+          // Handle add_message events (messages added to chat)
+          if (event.event === 'add_message') {
+            console.log('📨 Message added:', event.data);
+            // Forward add_message to client
+            res.write(JSON.stringify({ 
+              type: 'add_message', 
+              data: event.data 
+            }) + '\n');
+          }
+          
+          // Handle token events (streaming tokens from the model)
+          // Per Langflow docs: event.data.chunk contains the token
           if (event.event === 'token') {
             // Send each token as it arrives
             res.write(JSON.stringify({ 
@@ -273,14 +290,19 @@ app.post('/api/analyze', async (req, res) => {
               data: event.data.chunk 
             }) + '\n');
             fullResponse += event.data.chunk;
-          } else if (event.event === 'end') {
+          } 
+          
+          // Handle end event (stream complete)
+          // Per Langflow docs: contains the full response
+          if (event.event === 'end') {
             // Final message with complete response
             res.write(JSON.stringify({ 
               type: 'end', 
               session_id: analysisSessionId,
-              elapsed_ms: Date.now() - startTime
+              elapsed_ms: Date.now() - startTime,
+              data: event.data // Contains the full response from Langflow
             }) + '\n');
-            fullResponse = event.data; // Full response in end event
+            fullResponse = event.data;
             break;
           }
         }
