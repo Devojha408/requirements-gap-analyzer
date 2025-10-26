@@ -208,24 +208,60 @@ app.post('/api/analyze', async (req, res) => {
     }
 
     console.log('🚀 Running main analysis flow...');
-    console.log('⏱️  This may take several minutes (timeout set to 10 minutes)');
+    console.log('⏱️  Using streaming for long-running flows (supports 4-5 minute analysis)');
     const startTime = Date.now();
     
-    // Increase client timeout for long-running flows
-    client.request.timeout = 600000; // 10 minutes
-    
     const flow = client.flow(MAIN_ANALYSIS_FLOW_ID);
-    const response = await flow.run(input_value, runOptions);
+    
+    // Check if client wants streaming
+    const useStreaming = req.query.stream === 'true';
+    
+    if (useStreaming) {
+      // Use streaming for better UX with long-running flows
+      console.log('📡 Using streaming mode...');
+      
+      res.set('Content-Type', 'application/x-ndjson');
+      res.set('Transfer-Encoding', 'chunked');
+      
+      const response = await flow.stream(input_value, runOptions);
+      let fullResponse = '';
+      
+      for await (const event of response) {
+        if (event.event === 'token') {
+          // Send each token as it arrives
+          res.write(JSON.stringify({ 
+            type: 'token', 
+            data: event.data.chunk 
+          }) + '\n');
+          fullResponse += event.data.chunk;
+        } else if (event.event === 'end') {
+          // Final message with complete response
+          res.write(JSON.stringify({ 
+            type: 'end', 
+            session_id: analysisSessionId,
+            elapsed_ms: Date.now() - startTime
+          }) + '\n');
+          fullResponse = event.data; // Full response in end event
+        }
+      }
+      
+      res.end();
+      console.log(`✓ Streaming completed (${Date.now() - startTime}ms)`);
+    } else {
+      // Non-streaming mode (original implementation)
+      console.log('⚡ Using standard run mode...');
+      const response = await flow.run(input_value, runOptions);
+      
+      const elapsed = Date.now() - startTime;
+      console.log(`✓ Analysis completed (${elapsed}ms)`);
 
-    const elapsed = Date.now() - startTime;
-    console.log(`✓ Analysis completed (${elapsed}ms)`);
-
-    return res.json({
-      success: true,
-      session_id: analysisSessionId,
-      elapsed_ms: elapsed,
-      response: response
-    });
+      return res.json({
+        success: true,
+        session_id: analysisSessionId,
+        elapsed_ms: elapsed,
+        response: response
+      });
+    }
 
   } catch (err) {
     console.error('✗ Analysis error:', err.message);
@@ -233,6 +269,41 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(500).json({ 
       error: 'Analysis failed', 
       details: err.message || String(err) 
+    });
+  }
+});
+
+// GET /api/monitor/flow/:flowId - Get component execution status
+app.get('/api/monitor/flow/:flowId', async (req, res) => {
+  try {
+    const apiKey = getApiKey(req);
+    if (!apiKey) {
+      return res.status(401).json({ error: 'API key required' });
+    }
+
+    const flowId = req.params.flowId;
+    console.log(`📊 Fetching monitor data for flow: ${flowId}`);
+    
+    const response = await axios.get(
+      `${LANGFLOW_BASE_URL}/api/v1/monitor/builds?flow_id=${flowId}`,
+      {
+        headers: {
+          'accept': 'application/json',
+          'x-api-key': apiKey
+        }
+      }
+    );
+
+    return res.json({
+      success: true,
+      builds: response.data
+    });
+
+  } catch (err) {
+    console.error('✗ Monitor error:', err.message);
+    return res.status(500).json({ 
+      error: 'Failed to get monitor data', 
+      details: err.response?.data || err.message 
     });
   }
 });
@@ -253,5 +324,7 @@ app.listen(PORT, () => {
   console.log(`   All analysis happens in the main flow`);
   console.log(`   GitHub URL and Confluence link are passed in the chat input`);
   console.log(`   Example: "Analyze requirements from [confluence-url] against [github-url] master branch"`);
+  console.log('\n📊 New Endpoints:');
+  console.log(`   GET /api/monitor/flow/:flowId - Monitor component execution`);
   console.log('');
 });

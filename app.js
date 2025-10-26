@@ -8,7 +8,8 @@ const state = {
   uploadedFile: null,
   uploadedFileName: null,
   results: null,
-  error: null
+  error: null,
+  monitoringInterval: null
 };
 
 // API Configuration
@@ -16,7 +17,8 @@ const API_CONFIG = {
   baseUrl: 'http://localhost:3000',
   endpoints: {
     uploadFile: '/api/upload-file',
-    analyze: '/api/analyze'
+    analyze: '/api/analyze',
+    monitor: '/api/monitor/flow'
   }
 };
 
@@ -198,11 +200,22 @@ async function handleAnalyze() {
     showSection('loading');
     elements.analyzeBtn.disabled = true;
 
+    // Clear previous results for streaming
+    if (elements.summaryText) {
+      elements.summaryText.textContent = '';
+    }
+    if (elements.gapsList) {
+      elements.gapsList.innerHTML = '';
+    }
+    if (elements.recommendationsList) {
+      elements.recommendationsList.innerHTML = '';
+    }
+
     // Show progress message for long-running analysis
     const loadingText = document.querySelector('.loading-text');
     const loadingSubtext = document.querySelector('.loading-subtext');
     if (loadingText) loadingText.textContent = 'Analyzing requirements...';
-    if (loadingSubtext) loadingSubtext.textContent = 'This may take 4-5 minutes. Please wait...';
+    if (loadingSubtext) loadingSubtext.textContent = 'Using streaming mode. Results will appear as they are generated...';
 
     // Upload file to Langflow if provided
     let filePath = null;
@@ -216,16 +229,50 @@ async function handleAnalyze() {
     const analysisQuery = buildAnalysisQuery(confluenceUrl, githubUrl, branchName, instructions);
     console.log('📝 Analysis query:', analysisQuery);
     
+    // Use streaming for better UX with long-running flows
+    const USE_STREAMING = true;
+    
+    // Get flow ID for monitoring (from environment or config)
+    const FLOW_ID = 'd5e49d37-42d9-453a-b428-a6bafc90f608'; // Your MAIN_ANALYSIS_FLOW_ID
+    
+    // Show results section immediately when streaming starts
+    if (USE_STREAMING) {
+      showSection('results');
+      elements.loadingSection.classList.add('hidden');
+      // Start monitoring which component is running
+      startMonitoring(FLOW_ID);
+    }
+    
     // Call analysis API - now everything goes to MAIN_ANALYSIS_FLOW_ID
-    const result = await callAnalysisAPI(analysisQuery, filePath);
+    const result = await callAnalysisAPI(analysisQuery, filePath, USE_STREAMING);
+    
+    // Stop monitoring when done
+    stopMonitoring();
+    
+    // Hide streaming progress indicator
+    const streamingProgress = document.getElementById('streamingProgress');
+    if (streamingProgress) {
+      streamingProgress.classList.add('hidden');
+    }
     
     setState({ isLoading: false, results: result });
-    displayResults(result);
-    showSection('results');
+    
+    if (!USE_STREAMING) {
+      displayResults(result);
+    }
+    
     elements.analyzeBtn.disabled = false;
 
   } catch (error) {
     console.error('❌ Analysis error:', error);
+    stopMonitoring(); // Stop monitoring on error
+    
+    // Hide streaming progress on error
+    const streamingProgress = document.getElementById('streamingProgress');
+    if (streamingProgress) {
+      streamingProgress.classList.add('hidden');
+    }
+    
     setState({ isLoading: false, error: error.message });
     displayError(error.message);
     showSection('error');
@@ -342,7 +389,7 @@ function generateReportText() {
 }
 
 // Call Analysis API - simplified to pass everything in the chat input
-async function callAnalysisAPI(query, filePath) {
+async function callAnalysisAPI(query, filePath, useStreaming = false) {
   const payload = {
     input_value: query,
     session_id: `analysis_${Date.now()}`
@@ -354,9 +401,12 @@ async function callAnalysisAPI(query, filePath) {
   }
 
   console.log('🚀 Calling analysis API with payload:', payload);
+  console.log('📡 Streaming mode:', useStreaming ? 'enabled' : 'disabled');
 
   try {
-    const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.analyze}`, {
+    const url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.analyze}${useStreaming ? '?stream=true' : ''}`;
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -369,13 +419,134 @@ async function callAnalysisAPI(query, filePath) {
       throw new Error(errorData.details || errorData.error || response.statusText);
     }
 
-    const data = await response.json();
-    console.log('✓ Analysis complete:', data);
-    return data.response;
+    if (useStreaming && response.headers.get('Content-Type') === 'application/x-ndjson') {
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          
+          try {
+            const event = JSON.parse(line);
+            
+            if (event.type === 'token') {
+              // Update UI with each token
+              console.log('📝 Token:', event.data);
+              updateStreamingOutput(event.data);
+            } else if (event.type === 'end') {
+              console.log('✓ Streaming complete:', event);
+              return event;
+            }
+          } catch (e) {
+            console.warn('Failed to parse event:', line);
+          }
+        }
+      }
+      
+      return { success: true };
+    } else {
+      // Non-streaming response
+      const data = await response.json();
+      console.log('✓ Analysis complete:', data);
+      return data.response;
+    }
 
   } catch (error) {
     console.error('❌ Analysis API error:', error);
     throw error;
+  }
+}
+
+// Update streaming output in real-time
+function updateStreamingOutput(chunk) {
+  // Update the summary text with streaming chunks
+  if (elements.summaryText) {
+    elements.summaryText.textContent += chunk;
+    // Auto-scroll to bottom
+    elements.summaryText.parentElement.scrollTop = elements.summaryText.parentElement.scrollHeight;
+  }
+}
+
+// Start monitoring component status during analysis
+function startMonitoring(flowId) {
+  // Clear any existing monitoring
+  stopMonitoring();
+  
+  console.log(`📊 Starting monitoring for flow: ${flowId}`);
+  
+  state.monitoringInterval = setInterval(async () => {
+    try {
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.monitor}/${flowId}`);
+      const data = await response.json();
+      
+      if (data.success && data.builds && data.builds.vertex_builds) {
+        updateComponentStatus(data.builds.vertex_builds);
+      }
+    } catch (err) {
+      console.warn('Monitor polling error:', err);
+    }
+  }, 3000); // Poll every 3 seconds
+}
+
+// Stop monitoring
+function stopMonitoring() {
+  if (state.monitoringInterval) {
+    clearInterval(state.monitoringInterval);
+    state.monitoringInterval = null;
+    console.log('✓ Monitoring stopped');
+  }
+}
+
+// Update component status in UI
+function updateComponentStatus(builds) {
+  // Find components that are currently running
+  const runningComponents = builds
+    .filter(b => b.status === 'running' || b.status === 'pending')
+    .map(b => b.vertex_name);
+  
+  const streamingProgress = document.getElementById('streamingProgress');
+  const currentComponentSpan = document.getElementById('currentComponent');
+  
+  if (runningComponents.length > 0) {
+    const componentName = runningComponents[0];
+    
+    // Show streaming progress indicator
+    if (streamingProgress) {
+      streamingProgress.classList.remove('hidden');
+    }
+    
+    // Update with current component name (remove "Agent" suffix for readability)
+    if (currentComponentSpan) {
+      const cleanName = componentName.replace(' Agent', '');
+      currentComponentSpan.textContent = `🔄 Processing: ${cleanName}...`;
+    }
+    
+    console.log(`📊 Current component: ${componentName}`);
+  } else {
+    // All components completed
+    if (currentComponentSpan) {
+      currentComponentSpan.textContent = '✓ Analysis complete! Generating report...';
+    }
+  }
+  
+  // Log completed components
+  const completedComponents = builds
+    .filter(b => b.status === 'success')
+    .map(b => b.vertex_name);
+  
+  if (completedComponents.length > 0) {
+    console.log(`✓ Completed: ${completedComponents.join(', ')}`);
   }
 }
 
