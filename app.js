@@ -292,6 +292,51 @@ async function handleAnalyze() {
     
     if (!USE_STREAMING) {
       displayResults(result);
+    } else {
+      // In streaming mode, parse the accumulated text to populate gaps/recommendations
+      const streamedText = elements.summaryText?.textContent.replace('▊', '').trim() || '';
+      console.log('📄 Parsing streamed text, length:', streamedText.length);
+      
+      if (streamedText) {
+        const sections = parseAnalysisOutput(streamedText);
+        console.log('📊 Parsed sections:', {
+          summaryLength: sections.summary?.length || 0,
+          gapsCount: sections.gaps?.length || 0,
+          recsCount: sections.recommendations?.length || 0
+        });
+        
+        // Update summary (already shown during streaming)
+        // Parse and display gaps
+        elements.gapsList.innerHTML = '';
+        if (sections.gaps && sections.gaps.length > 0) {
+          sections.gaps.forEach(gap => {
+            const li = document.createElement('li');
+            li.textContent = gap;
+            elements.gapsList.appendChild(li);
+          });
+        } else {
+          const li = document.createElement('li');
+          li.textContent = 'No gaps detected';
+          li.style.color = 'var(--color-success)';
+          elements.gapsList.appendChild(li);
+        }
+        
+        // Parse and display recommendations
+        elements.recommendationsList.innerHTML = '';
+        if (sections.recommendations && sections.recommendations.length > 0) {
+          sections.recommendations.forEach(rec => {
+            const li = document.createElement('li');
+            li.textContent = rec;
+            elements.recommendationsList.appendChild(li);
+          });
+        } else {
+          const li = document.createElement('li');
+          li.textContent = 'No recommendations at this time';
+          elements.recommendationsList.appendChild(li);
+        }
+      } else {
+        console.warn('⚠️ No streamed text found to parse');
+      }
     }
     
     // Only enable download button after successful completion
@@ -406,7 +451,9 @@ function generateReportText() {
   report += `Generated: ${new Date().toLocaleString()}\n\n`;
   
   report += '--- SUMMARY ---\n';
-  report += elements.summaryText.textContent + '\n\n';
+  // Remove cursor element if present
+  const summaryText = elements.summaryText.textContent.replace('▊', '').trim();
+  report += summaryText + '\n\n';
   
   report += '--- IDENTIFIED GAPS ---\n';
   const gaps = Array.from(elements.gapsList.children).map(li => li.textContent);
@@ -590,17 +637,26 @@ function startMonitoring(flowId) {
   state.monitoringInterval = setInterval(async () => {
     try {
       const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.monitor}/${flowId}`);
+      
+      if (!response.ok) {
+        console.warn(`⚠️ Monitor API returned ${response.status}`);
+        return;
+      }
+      
       const data = await response.json();
       
       // Log the structure for debugging
       if (data.success && data.builds && data.builds.vertex_builds) {
-        console.log('📊 Monitor data:', Object.keys(data.builds.vertex_builds));
+        const componentCount = Object.keys(data.builds.vertex_builds).length;
+        console.log(`📊 Monitor data: ${componentCount} component(s)`);
         updateComponentStatus(data.builds.vertex_builds);
       } else if (data.success && data.builds) {
         console.log('⚠️ Monitor response has builds but no vertex_builds:', Object.keys(data.builds));
+      } else {
+        console.warn('⚠️ Unexpected monitor response structure');
       }
     } catch (err) {
-      console.warn('Monitor polling error:', err);
+      console.warn('⚠️ Monitor polling error:', err.message);
     }
   }, 3000); // Poll every 3 seconds
 }
@@ -743,12 +799,18 @@ function parseAnalysisOutput(text) {
     recommendations: []
   };
 
-  if (!text) return sections;
+  if (!text) {
+    console.warn('⚠️ parseAnalysisOutput: No text provided');
+    return sections;
+  }
+
+  console.log('🔍 Parsing text preview:', text.substring(0, 200) + '...');
 
   // Extract summary (first paragraph or before "Gaps" section)
   const summaryMatch = text.match(/^(.*?)(?=\n\n|Gaps:|Recommendations:|$)/s);
   if (summaryMatch) {
     sections.summary = summaryMatch[1].trim();
+    console.log('✓ Found summary:', sections.summary.substring(0, 100) + '...');
   }
 
   // Extract gaps
@@ -759,6 +821,9 @@ function parseAnalysisOutput(text) {
       .split(/\n/)
       .map(line => line.replace(/^[-•*]\s*/, '').trim())
       .filter(line => line.length > 0);
+    console.log('✓ Found gaps:', sections.gaps.length);
+  } else {
+    console.log('⚠️ No gaps section found');
   }
 
   // Extract recommendations
@@ -769,6 +834,9 @@ function parseAnalysisOutput(text) {
       .split(/\n/)
       .map(line => line.replace(/^[-•*]\s*/, '').trim())
       .filter(line => line.length > 0);
+    console.log('✓ Found recommendations:', sections.recommendations.length);
+  } else {
+    console.log('⚠️ No recommendations section found');
   }
 
   return sections;
